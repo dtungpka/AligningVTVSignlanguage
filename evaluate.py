@@ -5,6 +5,7 @@ import numpy as np
 import random
 import os
 import torch.optim as optim
+from sklearn.metrics import roc_auc_score 
 import sys
 if 'ipykernel' in sys.modules:
     from tqdm.notebook import tqdm
@@ -43,22 +44,8 @@ def compute_iou(pred_start, pred_end, true_start, true_end):
     union = max(pred_end, true_end) - min(pred_start, true_start)
     return intersection / union if union != 0 else 0
 
-def compute_map(confidences, ground_truth):
-    # Sort by descending confidence
-    sorted_indices = np.argsort(-confidences)
-    sorted_gt = ground_truth[sorted_indices]
-    true_positives = np.cumsum(sorted_gt)
-    false_positives = np.cumsum(1 - sorted_gt)
-    precision = true_positives / (true_positives + false_positives)
-    recall = true_positives / np.sum(ground_truth)
-    # Compute Average Precision (AP)
-    ap = 0.0
-    for t in np.linspace(0, 1, 11):
-        p = precision[recall >= t]
-        if p.size > 0:
-            ap += p.max()
-    ap /= 11
-    return ap
+def compute_roc_auc(confidences, ground_truth):
+    return roc_auc_score(ground_truth, confidences)
 def compute_best_f1(confidences, ground_truth):
     thresholds = np.linspace(0, 1, num=101)
     best_f1 = 0
@@ -94,7 +81,7 @@ def test(Xs, check_point, frame_count=5):
         result_list = output.cpu().numpy()
     return result_list
 
-def process_word(task, model_paths, video, save_path, frame_count=5, delta=120):
+def process_word(task, model_paths, video, save_path, frame_count=5, delta=120, checkpoint_path='models'):
     start_gt = task['start_frame']
     end_gt = task['end_frame']
     start_frame = start_gt - delta
@@ -153,13 +140,15 @@ def process_word(task, model_paths, video, save_path, frame_count=5, delta=120):
             pred_start, pred_end = start_frame, start_frame
 
         iou = compute_iou(pred_start, pred_end, start_gt, end_gt)
-        map_score = compute_map(confidence, ground_truth)
-        results.append({'model': os.path.basename(check_point),
-                        'iou': iou,
-                        'mAP': map_score,
-                        'f1': best_f1,
-                        'threshold': best_threshold})
+        roc_auc = compute_roc_auc(confidence, ground_truth)  # Replace compute_map with compute_roc_auc
 
+        results.append({
+            'model': os.path.basename(check_point),
+            'iou': iou,
+            'roc_auc': roc_auc,  # Update key to 'roc_auc'
+            'f1': best_f1,
+            'threshold': best_threshold
+        })
     return results
 
 def process_evaluation_pack(evaluation_pack, checkpoint_path, save_path, frame_count=5, delta=120, csv_path='results.csv'):
@@ -180,7 +169,7 @@ def process_evaluation_pack(evaluation_pack, checkpoint_path, save_path, frame_c
                 'end_frame': end_frame,
                 'ids': ids
             }
-            result = process_word(task, model_paths, video, save_path, frame_count, delta)
+            result = process_word(task, model_paths, video, save_path, frame_count, delta,checkpoint_path)
             if result:
                 for res in result:
                     records.append({
@@ -188,14 +177,14 @@ def process_evaluation_pack(evaluation_pack, checkpoint_path, save_path, frame_c
                         'video': video_name,
                         'model': res['model'],
                         'iou': res['iou'],
-                        'mAP': res['mAP'],
+                        'roc_auc': res['roc_auc'],  # Update key to 'roc_auc'
                         'f1': res['f1'],
                         'threshold': res['threshold']
                     })
 
     os.makedirs(save_path, exist_ok=True)
     with open(os.path.join(save_path, csv_path), 'w', newline='') as csvfile:
-        fieldnames = ['word', 'video', 'model', 'iou', 'mAP', 'f1', 'threshold']
+        fieldnames = ['word', 'video', 'model', 'iou', 'roc_auc', 'f1', 'threshold']  # Update fieldnames
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(records)
