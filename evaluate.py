@@ -5,7 +5,11 @@ import numpy as np
 import random
 import os
 import torch.optim as optim
-from tqdm import tqdm
+import sys
+if 'ipykernel' in sys.modules:
+    from tqdm.notebook import tqdm
+else:
+    from tqdm import tqdm
 from datetime import datetime
 import csv
 from torch.utils.data import DataLoader

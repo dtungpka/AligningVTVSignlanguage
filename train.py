@@ -6,9 +6,10 @@ import random
 import os
 import argparse
 import torch.optim as optim
-try:
+import sys
+if 'ipykernel' in sys.modules:
     from tqdm.notebook import tqdm
-except ImportError:
+else:
     from tqdm import tqdm
 from datetime import datetime
 import csv
